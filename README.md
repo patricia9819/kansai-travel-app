@@ -1,1 +1,1091 @@
-# kansai-travel-app
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>關西散策之旅</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <!-- Babel for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <style>
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        body { background-color: #d1d2d6; -webkit-tap-highlight-color: transparent; }
+        /* IOS inputs reset */
+        input, select, textarea { -webkit-appearance: none; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef, Component } = React;
+
+        // --- Error Boundary ---
+        class ErrorBoundary extends Component {
+            constructor(props) {
+                super(props);
+                this.state = { hasError: false, error: null };
+            }
+            static getDerivedStateFromError(error) {
+                return { hasError: true, error };
+            }
+            componentDidCatch(error, errorInfo) {
+                console.error("Uncaught error:", error, errorInfo);
+            }
+            render() {
+                if (this.state.hasError) {
+                    return (
+                        <div className="flex flex-col items-center justify-center h-screen bg-gray-100 p-4 text-center">
+                            <h1 className="text-xl font-bold text-red-600 mb-2">哎呀！App 發生錯誤</h1>
+                            <p className="text-gray-600 mb-4 text-sm">{this.state.error && this.state.error.toString()}</p>
+                            <button onClick={() => window.location.reload()} className="bg-blue-500 text-white px-4 py-2 rounded-lg">重新整理</button>
+                        </div>
+                    );
+                }
+                return this.props.children;
+            }
+        }
+
+        // --- Constants & Defaults ---
+        const DB_CONFIG = {
+            NAME: 'KansaiTravelDB_V9', // Version Bump to clear old bad states
+            VERSION: 1,
+            STORES: ['itinerary', 'shopping', 'expenses', 'mustbuy', 'flog']
+        };
+
+        const DEFAULT_ITINERARY = [
+            { day: 1, date: "1/22", fullDate: "2026/1/22", title: "前往神戶", city: "Kobe", events: [{ id: 101, time: "09:00-12:30", title: "飛往神戶", location: "關西機場/神戶機場", address: "神戸市中央区神戸空港1", note: "搭乘船隻或電車", type: "flight" }, { id: 102, time: "12:30-14:00", title: "前往 Brenza Hotel", location: "Brenza Hotel", address: "〒651-0096 兵庫県神戸市中央区雲井通6-1-1", note: "Check-in 或寄放行李" }, { id: 103, time: "14:40-15:20", title: "Veggie Junkies Burger", location: "Veggie Junkies Burger", address: "〒650-0021 兵庫県神戸市中央区三宮町3丁目5-5 2F", note: "午餐" }, { id: 104, time: "15:50-16:20", title: "Be Kobe Monoument", location: "BE KOBE", address: "神戸市中央区港島1丁目", note: "拍照打卡" }, { id: 105, time: "16:25-18:00", title: "神戶港塔", location: "神戶港塔", address: "〒650-0042 兵庫県神戸市中央区波止場町5-5", note: "觀景" }, { id: 106, time: "18:30-20:30", title: "Umie Mosaic", location: "Kobe Harborland", address: "〒650-0021 兵庫県神戸市中央区東川崎町1-6-1", note: "晚餐與逛街" }, { id: 107, time: "20:30-", title: "回到飯店", location: "Brenza Hotel", address: "〒651-0096 兵庫県神戸市中央区雲井通6-1-1", note: "休息" }] },
+            { day: 2, date: "1/23", fullDate: "2026/1/23", title: "神戶一日遊", city: "Kobe", events: [{ id: 201, time: "09:00", title: "飯店出發", location: "Brenza Hotel", address: "", note: "" }, { id: 202, time: "09:20-10:10", title: "生田神社", location: "生田神社", address: "神戸市中央区下山手通1-2-1", note: "戀愛結緣" }, { id: 203, time: "10:40-11:20", title: "兵庫縣立美術館", location: "兵庫縣立美術館", address: "〒651-0073 神戸市中央区脇浜海岸通1-1-1", note: "安藤忠雄建築" }, { id: 204, time: "11:50-13:00", title: "餐廳 Horieza", location: "やさい食堂堀江座", address: "〒650-0022 兵庫県神戸市中央区元町通6-3-3", note: "午餐" }, { id: 205, time: "13:30-14:00", title: "三宮站 + Brenza Hotel", location: "三宮區", address: "〒651-0096 兵庫県神戸市中央区雲井通6-1-1", note: "稍作休息/整理" }, { id: 206, time: "14:30-15:00", title: "Be Kobe Monoument", location: "BE KOBE", address: "神戸市中央区港島1丁目", note: "若Day1未去或想補拍" }, { id: 207, time: "15:00-16:00", title: "前往摩耶山", location: "摩耶山登山口", address: "〒657-0812 神戸市灘区箕岡通4-3-1", note: "前往搭乘纜車" }, { id: 208, time: "16:00-17:30", title: "摩耶山夜景", location: "掬星台", address: "〒657-0812 神戸市灘区摩耶山町2-2", note: "日本三大夜景" }, { id: 209, time: "18:30-20:00", title: "晚餐 Boiling Point", location: "Boiling Point Kobe", address: "〒651-8502 兵庫県神戸市中央区雲井通6-1-15", note: "火鍋" }, { id: 210, time: "20:10-", title: "回到飯店", location: "Brenza Hotel", address: "〒651-0096 兵庫県神戸市中央区雲井通6-1-1", note: "" }] },
+            { day: 3, date: "1/24", fullDate: "2026/1/24", title: "神戶 -> 京都", city: "Kyoto", events: [{ id: 301, time: "09:30", title: "飯店出發", location: "Brenza Hotel", address: "", note: "" }, { id: 302, time: "09:50-11:20", title: "北野異人館街", location: "北野異人館", address: "神戸市中央区北野町3-13-3", note: "異國風情" }, { id: 303, time: "11:30-13:00", title: "XINLIN CHINESE RESTAURANT", location: "馨林", address: "〒650-0004 兵庫県神戸市中央区中山手通2丁目13-12", note: "午餐" }, { id: 304, time: "13:00-14:00", title: "回飯店拿行李", location: "Brenza Hotel -> 三宮站", address: "", note: "與小叮會合" }, { id: 305, time: "14:00-15:10", title: "坐JR去京都", location: "JR三宮站", address: "", note: "移動日" }, { id: 306, time: "15:10-15:30", title: "飯店 Check in", location: "京都新阪急飯店", address: "〒600-8216 京都府京都市下京区東塩小路町579", note: "京都車站對面" }, { id: 307, time: "16:00-17:30", title: "mumokuteki cafe&foods", location: "mumokuteki Kyoto", address: "〒604-8061 京都市中京区御幸町通六角下ル伊勢屋町351", note: "下午茶/早晚餐" }, { id: 308, time: "17:30-20:30", title: "新京極 + 錦天滿宮", location: "新京極商店街", address: "京都市中京区新京極通四条上る中之町537", note: "逛街" }, { id: 309, time: "20:30-", title: "回到飯店", location: "京都新阪急飯店", address: "〒600-8216 京都府京都市下京区東塩小路町579", note: "" }] },
+            { day: 4, date: "1/25", fullDate: "2026/1/25", title: "京都嵐山漫遊", city: "Kyoto", events: [{ id: 401, time: "09:00", title: "飯店出發", location: "京都新阪急飯店", address: "", note: "" }, { id: 402, time: "09:50-13:00", title: "嵐山散策", location: "常寂光寺 -> 天龍寺", address: "〒616-8397 京都府京都市右京區嵯峨小倉山小倉町3", note: "常寂光寺/御髮神社/竹林/天龍寺" }, { id: 403, time: "13:15-14:30", title: "西山草堂", location: "西山草堂", address: "京都府京都市右京区嵯峨天龍寺芦ノ馬場町63", note: "午餐：素食火鍋" }, { id: 404, time: "14:50-16:50", title: "渡月橋 + 嵐山商店街", location: "渡月橋", address: "京都府京都市右京区嵯峨天龍寺芒ノ馬場町", note: "逛街拍照" }, { id: 405, time: "17:30-19:00", title: "Vegetarian Cafe Ren", location: "Cafe Ren 四条大宮", address: "〒604-8802 京都府京都市中京区壬生坊城町12-7", note: "晚餐" }, { id: 406, time: "19:20-20:20", title: "京都塔", location: "京都塔", address: "〒600-8216 京都市下京区烏丸通七条下る東塩小路町721-1", note: "夜景" }, { id: 407, time: "20:30-", title: "回到飯店", location: "京都新阪急飯店", address: "", note: "" }] },
+            { day: 5, date: "1/26", fullDate: "2026/1/26", title: "京都古蹟巡禮", city: "Kyoto", events: [{ id: 501, time: "09:00", title: "飯店出發", location: "京都新阪急飯店", address: "", note: "" }, { id: 502, time: "09:30-10:30", title: "伏見稻荷大社", location: "伏見稻荷大社", address: "〒612-0882 京都府京都市伏見区深草藪之内町68", note: "千本鳥居" }, { id: 503, time: "10:50-11:30", title: "八坂庚申堂", location: "八坂庚申堂", address: "京都市東山区金園町390", note: "色彩繽紛猴子御守" }, { id: 504, time: "11:40-13:00", title: "cafe vegan terrace", location: "cafe vegan terrace", address: "〒605-0812 京都府京都市東山区毘沙門町44-21", note: "午餐" }, { id: 505, time: "13:30-17:00", title: "清水寺周邊散策", location: "清水寺", address: "京都府京都市東山區清水1-294", note: "二寧坂/產寧坂/清水寺/八坂神社" }, { id: 506, time: "17:30-19:00", title: "餐廳 Nijiya", location: "Nijiya", address: "〒604-8004 京都府京都市中京区南車屋町287", note: "晚餐" }, { id: 507, time: "19:30-", title: "回到飯店", location: "京都新阪急飯店", address: "", note: "" }] },
+            { day: 6, date: "1/27", fullDate: "2026/1/27", title: "京都 -> 大阪", city: "Osaka", events: [{ id: 601, time: "08:30", title: "飯店出發", location: "京都新阪急飯店", address: "", note: "" }, { id: 602, time: "08:40-10:10", title: "Vegetable Dishes OKI", location: "OKI SHIJO", address: "〒600-8488 京都府京都市下京区岩戸山町411", note: "早餐/早午餐" }, { id: 603, time: "10:30-11:30", title: "前往大阪", location: "大阪車站", address: "大阪府大阪市北区梅田3-1-1", note: "移動 + 寄放行李" }, { id: 604, time: "11:50-13:10", title: "寶可夢+任天堂", location: "大丸梅田店 13F", address: "〒530-8202 大阪府大阪市北区梅田3丁目1-1", note: "購物" }, { id: 605, time: "13:20-14:20", title: "Vegan & Gluten Free Osaka", location: "大阪駅前第4ビル B1F", address: "〒530-0001 大阪府大阪市北区梅田1丁目11-4", note: "午餐" }, { id: 606, time: "14:30-15:40", title: "飯店 Check in", location: "大阪日航酒店", address: "〒542-0086 大阪府大阪市中央区西心斎橋1-3-3", note: "心齋橋直結" }, { id: 607, time: "16:00-18:00", title: "通天閣 + 商店街", location: "通天閣", address: "大阪府大阪市浪速区恵美須東1-18-6", note: "新世界區域" }, { id: 608, time: "18:45-19:45", title: "Wonder Cruise", location: "道頓堀船着場", address: "〒542-0071 大阪府大阪市中央区道頓堀1丁目1-6", note: "觀光船" }, { id: 609, time: "20:00-21:30", title: "OKO Okonomiyaki Bar", location: "OKO", address: "〒542-0071 大阪府大阪市中央区道頓堀2丁目4-13", note: "大阪燒晚餐" }, { id: 610, time: "21:30-", title: "回到飯店", location: "大阪日航酒店", address: "〒542-0086 大阪府大阪市中央区西心斎橋1-3-3", note: "" }] },
+            { day: 7, date: "1/28", fullDate: "2026/1/28", title: "大阪市區遊", city: "Osaka", events: [{ id: 701, time: "09:00", title: "飯店出發", location: "大阪日航酒店", address: "", note: "" }, { id: 702, time: "09:15-10:30", title: "MERCY Vegan Factory", location: "Mercy Vegan", address: "〒542-0066 大阪府大阪市中央区瓦屋町2丁目4-15", note: "早午餐" }, { id: 703, time: "11:00-13:30", title: "大阪城 + 御座船", location: "大阪城公園", address: "大阪府大阪市中央区大阪城1-1", note: "歷史巡禮" }, { id: 704, time: "14:00-15:30", title: "Pivot BASE Cafe", location: "Pivot BASE", address: "〒542-0071 大阪府大阪市中央区道頓堀1丁目7-21", note: "下午茶" }, { id: 705, time: "16:00-18:00", title: "Harukas 300 展望台", location: "阿倍野 Harukas", address: "〒545-6016 大阪府大阪市阿倍野区阿倍野筋1丁目1-43", note: "高空美景" }, { id: 706, time: "18:20-19:30", title: "咲璽季 (SAIJIKI)", location: "SAIJIKI", address: "〒557-0001 大阪市西成区山王1丁目1-10", note: "台灣料理 素食Vegan" }, { id: 707, time: "19:50-21:00", title: "心齋橋逛街", location: "心齋橋筋", address: "大阪府大阪市中央区心斎橋筋", note: "購物" }, { id: 708, time: "21:00-", title: "回到飯店", location: "大阪日航酒店", address: "", note: "" }] },
+            { 
+                day: 8, 
+                date: "1/29", 
+                fullDate: "2026/1/29", 
+                title: "回家", 
+                city: "Kobe", 
+                events: [
+                    { id: 801, time: "09:30", title: "飯店出發", location: "大阪日航酒店", address: "", note: "Check-out" }, 
+                    { id: 802, time: "10:30-13:00", title: "前往神戶機場", location: "神戶機場", address: "神戸市中央区神戸空港1", note: "搭乘電車/接駁車" },
+                    { id: 803, time: "13:30-16:00", title: "飛往台灣", location: "神戶機場", address: "神戸市中央区神戸空港1", note: "搭機返程", type: "flight" }
+                ] 
+            }
+        ];
+
+        const DEFAULT_MUST_BUY_ITEMS = {
+            Kobe: [{ id: 1, name: "神戶布丁 (TORAKU)", price: "¥1,296 (4入)", loc: "Entree Marché 三宮店", address: "〒650-0001 兵庫県神戸市中央区加納町４丁目１−1", note: "JR三宮站剪票口旁" }, { id: 2, name: "燈塔餅乾", price: "依現場", loc: "MOTOMACHI CAKE", address: "〒650-0022 兵庫県神戸市中央区元町通５丁目５−1", note: "元町本店" }, { id: 3, name: "風見鶏起司蛋糕", price: "¥790 (3入)", loc: "風見雞本舖總店", address: "〒650-0002 兵庫県神戸市中央区北野町３丁目５−5", note: "北野異人館區" }, { id: 4, name: "魔法之壺布丁", price: "¥1,600 (4入)", loc: "Entree Marché 三宮店", address: "〒650-0001 兵庫県神戸市中央区加納町４丁目１−1", note: "需冷藏" }, { id: 5, name: "神戶三宮法式吐司夾心餅乾", price: "依現場", loc: "Entree Marché 三宮店", address: "〒650-0001 兵庫県神戸市中央区加納町４丁目１−1", note: "" }],
+            Kyoto: [{ id: 6, name: "嵯峨十景", price: "依現場", loc: "有職果子御調進所 老松 嵐山店", address: "〒616-8385 京都府京都市右京区嵯峨天龍寺芒ノ馬場町２０", note: "近天龍寺" }, { id: 7, name: "縮緬細工", price: "依現場", loc: "縮緬細工館 嵐山本店", address: "〒616-8384 京都府京都市右京区嵯峨天龍寺造路町１９−2", note: "布藝雜貨" }, { id: 8, name: "Press Butter Sand", price: "¥1,296 (5入)", loc: "京都車站", address: "〒600-8216 京都府京都市下京区東塩小路町", note: "焦糖奶油餅 (京名菓・名菜処 亰)" }],
+            Osaka: [{ id: 9, name: "老爺爺起司蛋糕", price: "1入 1,065日圓", loc: "老爺爺蛋糕店 難波本店", address: "〒542-0076 大阪府大阪市中央区難波３丁目２−28", note: "現烤需排隊" }, { id: 10, name: "PABLO半熟起司蛋糕", price: "1,480日圓", loc: "PABLO 心齋橋店", address: "〒542-0085 大阪府大阪市中央区心斎橋筋２丁目８−1", note: "心齋橋周邊" }, { id: 11, name: "艾許奶油餅乾", price: "依商品 (白盒4212, 金盒3024...)", loc: "阪急梅田本店 B2F", address: "〒530-8350 大阪府大阪市北区角田町８−7 阪急うめだ本店 B2F", note: "建議一開店去" }]
+        };
+
+        // Flatten MustBuy items for DB seeding
+        const FLAT_DEFAULT_MUST_BUY = [
+            ...DEFAULT_MUST_BUY_ITEMS.Kobe.map(i => ({ ...i, city: 'Kobe', id: Date.now() + Math.random() })),
+            ...DEFAULT_MUST_BUY_ITEMS.Kyoto.map(i => ({ ...i, city: 'Kyoto', id: Date.now() + Math.random() })),
+            ...DEFAULT_MUST_BUY_ITEMS.Osaka.map(i => ({ ...i, city: 'Osaka', id: Date.now() + Math.random() }))
+        ];
+
+        // --- Native IndexedDB Wrapper ---
+        class SimpleDB {
+            constructor() {
+                this.db = null;
+                this.initPromise = this.init();
+            }
+
+            init() {
+                return new Promise((resolve, reject) => {
+                    const request = indexedDB.open(DB_CONFIG.NAME, DB_CONFIG.VERSION);
+                    request.onupgradeneeded = (e) => {
+                        const db = e.target.result;
+                        DB_CONFIG.STORES.forEach(store => {
+                            if (!db.objectStoreNames.contains(store)) {
+                                db.createObjectStore(store, { keyPath: 'id' });
+                            }
+                        });
+                    };
+                    request.onsuccess = (e) => {
+                        this.db = e.target.result;
+                        resolve();
+                    };
+                    request.onerror = (e) => reject(e);
+                });
+            }
+
+            async ensureDb() {
+                if (!this.db) await this.initPromise;
+                return this.db;
+            }
+
+            async getAll(storeName) {
+                const db = await this.ensureDb();
+                return new Promise((resolve, reject) => {
+                    const tx = db.transaction(storeName, 'readonly');
+                    const request = tx.objectStore(storeName).getAll();
+                    request.onsuccess = () => resolve(request.result);
+                    request.onerror = () => reject(request.error);
+                });
+            }
+
+            async put(storeName, item) {
+                const db = await this.ensureDb();
+                return new Promise((resolve, reject) => {
+                    const tx = db.transaction(storeName, 'readwrite');
+                    const request = tx.objectStore(storeName).put(item);
+                    request.onsuccess = () => resolve(request.result);
+                    request.onerror = () => reject(request.error);
+                });
+            }
+
+            async delete(storeName, id) {
+                const db = await this.ensureDb();
+                return new Promise((resolve, reject) => {
+                    const tx = db.transaction(storeName, 'readwrite');
+                    const request = tx.objectStore(storeName).delete(id);
+                    request.onsuccess = () => resolve();
+                    request.onerror = () => reject(request.error);
+                });
+            }
+            
+            async count(storeName) {
+                const db = await this.ensureDb();
+                return new Promise((resolve, reject) => {
+                    const tx = db.transaction(storeName, 'readonly');
+                    const request = tx.objectStore(storeName).count();
+                    request.onsuccess = () => resolve(request.result);
+                    request.onerror = () => reject(request.error);
+                });
+            }
+        }
+
+        const dbInstance = new SimpleDB();
+
+        // --- Custom Hook for DB ---
+        const useDB = (storeName, initialData = []) => {
+            const [data, setData] = useState(initialData); // Init with default to prevent white screen
+            const [loading, setLoading] = useState(true);
+
+            useEffect(() => {
+                let mounted = true;
+                const load = async () => {
+                    try {
+                        const count = await dbInstance.count(storeName);
+                        if (count === 0 && initialData.length > 0) {
+                            // Seed data
+                            const seededItems = [];
+                            for (const item of initialData) {
+                                // Assign ID if missing
+                                const itemToStore = { ...item, id: item.id || item.day || Date.now() + Math.random() };
+                                await dbInstance.put(storeName, itemToStore);
+                                seededItems.push(itemToStore);
+                            }
+                            if (mounted) setData(seededItems); // Update state with seeded items (important for IDs)
+                        } else {
+                            const items = await dbInstance.getAll(storeName);
+                            if (storeName === 'itinerary') {
+                                items.sort((a, b) => a.day - b.day);
+                            }
+                            if (mounted) setData(items.length > 0 ? items : initialData);
+                        }
+                    } catch (e) {
+                        console.error(`Error loading ${storeName}`, e);
+                    } finally {
+                        if (mounted) setLoading(false);
+                    }
+                };
+                load();
+                return () => { mounted = false; };
+            }, [storeName]);
+
+            const addItem = async (item) => {
+                const newItem = { ...item, id: item.id || Date.now() };
+                await dbInstance.put(storeName, newItem);
+                setData(prev => [...prev, newItem]);
+            };
+
+            const updateItem = async (item) => {
+                await dbInstance.put(storeName, item);
+                setData(prev => prev.map(i => i.id === item.id ? item : i));
+            };
+
+            const deleteItem = async (id) => {
+                await dbInstance.delete(storeName, id);
+                setData(prev => prev.filter(i => i.id !== id));
+            };
+            
+            const replaceAll = (newItems) => {
+                 setData(newItems);
+                 newItems.forEach(item => dbInstance.put(storeName, item));
+            };
+
+            return { data, loading, addItem, updateItem, deleteItem, replaceAll };
+        };
+
+        // --- Persistence Hook for Simple Values (LocalStorage) ---
+        const useLocalStorage = (key, initialValue) => {
+            const [storedValue, setStoredValue] = useState(() => {
+                try {
+                    const item = window.localStorage.getItem(key);
+                    return item ? JSON.parse(item) : initialValue;
+                } catch (error) {
+                    console.log(error);
+                    return initialValue;
+                }
+            });
+
+            const setValue = (value) => {
+                try {
+                    const valueToStore = value instanceof Function ? value(storedValue) : value;
+                    setStoredValue(valueToStore);
+                    window.localStorage.setItem(key, JSON.stringify(valueToStore));
+                } catch (error) {
+                    console.log(error);
+                }
+            };
+
+            return [storedValue, setValue];
+        };
+
+        // --- Icons ---
+        const IconBase = ({ children, size = 24, className = "", ...props }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>{children}</svg>
+        );
+        const Icons = {
+            MapPin: (p) => <IconBase {...p}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></IconBase>,
+            ShoppingBag: (p) => <IconBase {...p}><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></IconBase>,
+            ShoppingCart: (p) => <IconBase {...p}><circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/></IconBase>,
+            Settings: (p) => <IconBase {...p}><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.18-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.18-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.18.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.1a2 2 0 0 1-1-1.72v-.51a2 2 0 0 1-1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.18.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></IconBase>,
+            Navigation: (p) => <IconBase {...p}><polygon points="3 11 22 2 13 21 11 13 3 11"/></IconBase>,
+            Plus: (p) => <IconBase {...p}><path d="M5 12h14"/><path d="M12 5v14"/></IconBase>,
+            Trash2: (p) => <IconBase {...p}><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></IconBase>,
+            Check: (p) => <IconBase {...p}><path d="M20 6 9 17l-5-5"/></IconBase>,
+            Calculator: (p) => <IconBase {...p}><rect width="16" height="20" x="4" y="2" rx="2"/><line x1="8" x2="16" y1="6" y2="6"/><line x1="16" x2="16" y1="14" y2="18"/><path d="M16 10h.01"/><path d="M12 10h.01"/><path d="M8 10h.01"/><path d="M12 14h.01"/><path d="M8 14h.01"/><path d="M12 18h.01"/><path d="M8 18h.01"/></IconBase>,
+            CloudSun: (p) => <IconBase {...p}><path d="M12 2v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="M20 12h2"/><path d="m19.07 4.93-1.41 1.41"/><path d="M15.947 12.65a4 4 0 0 0-5.925-4.128"/><path d="M13 22H7a5 5 0 1 1 4.9-6H13a3 3 0 0 1 0 6Z"/></IconBase>,
+            Globe: (p) => <IconBase {...p}><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></IconBase>,
+            DollarSign: (p) => <IconBase {...p}><line x1="12" x2="12" y1="2" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></IconBase>,
+            Users: (p) => <IconBase {...p}><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></IconBase>,
+            ChevronLeft: (p) => <IconBase {...p}><path d="m15 18-6-6 6-6"/></IconBase>,
+            ChevronRight: (p) => <IconBase {...p}><path d="m9 18 6-6-6-6"/></IconBase>,
+            Edit2: (p) => <IconBase {...p}><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></IconBase>,
+            X: (p) => <IconBase {...p}><path d="M18 6 6 18"/><path d="m6 6 12 12"/></IconBase>,
+            Wallet: (p) => <IconBase {...p}><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/></IconBase>,
+            PieChart: (p) => <IconBase {...p}><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></IconBase>,
+            ArrowUp: (p) => <IconBase {...p}><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></IconBase>,
+            ArrowDown: (p) => <IconBase {...p}><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></IconBase>,
+            Clock: (p) => <IconBase {...p}><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></IconBase>,
+            Type: (p) => <IconBase {...p}><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" x2="15" y1="20" y2="20"/><line x1="12" x2="12" y1="4" y2="20"/></IconBase>,
+            FileText: (p) => <IconBase {...p}><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></IconBase>,
+            Camera: (p) => <IconBase {...p}><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></IconBase>,
+            Plane: (p) => <IconBase {...p}><path d="M2 12h20"/><path d="m19 15 3-3-3-3"/><path d="m5 9-3 3 3 3"/></IconBase>,
+            Calendar: (p) => <IconBase {...p}><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></IconBase>,
+            ArrowRight: (p) => <IconBase {...p}><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></IconBase>,
+            ArrowUpDown: (p) => <IconBase {...p}><path d="m21 16-4 4-4-4"/><path d="M17 20V4"/><path d="m3 8 4-4 4 4"/><path d="M7 4v16"/></IconBase>
+        };
+
+        const { MapPin, ShoppingBag, ShoppingCart, Settings, Navigation, Plus, Trash2, Check, Calculator, CloudSun, Globe, DollarSign, Users, ChevronLeft, ChevronRight, Edit2, X, Wallet, PieChart, ArrowUp, ArrowDown, Clock, Type, FileText, Camera, Plane, Calendar, ArrowRight, ArrowUpDown } = Icons;
+
+        // --- Color Constants ---
+        const COLORS = {
+            primary: '#a6c2ce',
+            headerBg: '#9da2ad',
+            pageBg: '#d1d2d6',
+            timeBadge: '#b2cbb5',
+            mapBtn: '#d1d2d6',
+            navBtn: '#a6c2ce',
+            splitResult: '#a6c2ce',
+            boardingPassLine: '#d9d9d9',
+            boardingPassTime: '#b2cbb5',
+            cardShadow: '#9da2ad',
+            mustBuyNameBg: '#b2cbb5',
+            checkUnchecked: '#dce0dc', 
+            checkChecked: '#b2cbb5',
+        };
+
+        // --- Image Compression ---
+        const compressImage = (file) => {
+            return new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onload = (event) => {
+                    const img = new Image();
+                    img.src = event.target.result;
+                    img.onload = () => {
+                        const canvas = document.createElement('canvas');
+                        let width = img.width;
+                        let height = img.height;
+                        const maxWidth = 800;
+                        if (width > maxWidth) {
+                            height = Math.round((height * maxWidth) / width);
+                            width = maxWidth;
+                        }
+                        canvas.width = width;
+                        canvas.height = height;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, width, height);
+                        resolve(canvas.toDataURL('image/jpeg', 0.6));
+                    };
+                };
+            });
+        };
+
+        // --- Helper Functions ---
+        const generateTimeOptions = () => {
+            const options = [];
+            for (let i = 0; i < 24; i++) {
+                for (let j = 0; j < 60; j += 15) {
+                    const hour = i.toString().padStart(2, '0');
+                    const minute = j.toString().padStart(2, '0');
+                    options.push(`${hour}:${minute}`);
+                }
+            }
+            return options;
+        };
+        const TIME_OPTIONS = generateTimeOptions();
+
+        const formatTitleWithArrow = (title) => {
+            if (title.includes('->')) {
+                const parts = title.split('->');
+                return (
+                    <span className="flex items-center gap-1 justify-center">
+                        {parts[0]} <ArrowRight size={18} className="text-[#a6c2ce]" /> {parts[1]}
+                    </span>
+                );
+            }
+            return title;
+        };
+
+        const formatDateV2 = (dateStr) => {
+            if (!dateStr) return "";
+            const parts = dateStr.split('/');
+            if (parts.length === 3) {
+                const y = parts[0];
+                const m = parts[1].padStart(2, '0');
+                const d = parts[2].padStart(2, '0');
+                return `${y}-${m}-${d}`;
+            }
+            return dateStr;
+        };
+
+        // --- Component: Weather Widget ---
+        const WeatherWidget = ({ city }) => {
+            const weatherData = {
+                Kobe: { temp: "8°C", desc: "多雲時陰 降雨 20%" },
+                Kyoto: { temp: "6°C", desc: "晴時多雲 降雨 10%" },
+                Osaka: { temp: "9°C", desc: "多雲 降雨 10%" }
+            };
+            const current = weatherData[city] || weatherData['Osaka'];
+            const cityNameMap = { Kobe: '神戶', Kyoto: '京都', Osaka: '大阪' };
+
+            return (
+                <div style={{ backgroundColor: COLORS.headerBg }} className="p-4 text-white shadow-sm flex justify-between items-center sticky top-0 z-20">
+                    <div>
+                        <div className="flex items-center gap-2 mb-1">
+                            <MapPin size={16} />
+                            <span className="font-bold text-lg">{cityNameMap[city] || city} ({city})</span>
+                        </div>
+                        <div className="flex items-end gap-2">
+                            <div className="text-3xl font-bold leading-none">{current.temp}</div>
+                            <div className="text-sm opacity-90 pb-1">{current.desc}</div>
+                        </div>
+                    </div>
+                    <CloudSun size={40} className="opacity-90" />
+                </div>
+            );
+        };
+
+        // --- Component: Itinerary View ---
+        const ItineraryView = ({ itinerary, setItinerary, openEventModal, setDeleteConfirm, itineraryAPI }) => {
+            const [currentDayIndex, setCurrentDayIndex] = useState(0);
+            const scrollRef = useRef(null);
+
+            useEffect(() => {
+                if (scrollRef.current) {
+                    const activeBtn = scrollRef.current.children[currentDayIndex];
+                    if (activeBtn) {
+                        activeBtn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+                    }
+                }
+            }, [currentDayIndex]);
+
+            // Safe guard against empty itinerary
+            const day = (itinerary && itinerary.length > 0) ? itinerary[currentDayIndex] : DEFAULT_ITINERARY[0];
+            
+            const handleMoveEvent = (eventIndex, direction) => {
+                const newItinerary = [...itinerary];
+                const events = [...newItinerary[currentDayIndex].events];
+                const targetIndex = eventIndex + direction;
+                if (targetIndex >= 0 && targetIndex < events.length) {
+                    [events[eventIndex], events[targetIndex]] = [events[targetIndex], events[eventIndex]];
+                    newItinerary[currentDayIndex].events = events;
+                    // Update only the modified day in DB for efficiency (conceptually)
+                    // Here we replace the whole day object
+                     itineraryAPI.updateItem(newItinerary[currentDayIndex]);
+                }
+            };
+
+            return (
+                <div className="flex flex-col h-full pb-24 relative" style={{ backgroundColor: COLORS.pageBg }}>
+                    <WeatherWidget city={day.city} />
+
+                    {/* Date Nav */}
+                    <div className="bg-white shadow-sm sticky top-[88px] z-10 py-2 overflow-x-auto no-scrollbar">
+                        <div className="flex px-2 gap-2 w-max" ref={scrollRef}>
+                            {itinerary.map((d, idx) => (
+                                <button
+                                    key={d.day}
+                                    onClick={() => setCurrentDayIndex(idx)}
+                                    style={currentDayIndex === idx ? { backgroundColor: COLORS.headerBg, borderColor: COLORS.headerBg } : {}}
+                                    className={`flex flex-col items-center justify-center py-2 px-3 min-w-[70px] rounded-xl transition-all border ${currentDayIndex === idx ? 'text-white shadow-md transform scale-105' : 'bg-white text-gray-400 border-gray-100 hover:bg-gray-50'}`}
+                                >
+                                    <span className="text-[10px] font-bold uppercase tracking-wide">Day {d.day}</span>
+                                    <span className="text-sm font-mono font-bold">{d.date}</span>
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Events List */}
+                    <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                        <div className="text-center mb-2">
+                            <h2 className="text-lg font-bold text-[#333] flex items-center justify-center gap-2">
+                                {formatTitleWithArrow(day.title)}
+                            </h2>
+                        </div>
+
+                        {day.events.map((event, idx) => {
+                            if (event.type === 'flight') {
+                                const isToKobe = event.title.includes("神戶") || event.title.includes("Kobe");
+                                const originCode = isToKobe ? "RMQ" : "UKB"; 
+                                const originCity = isToKobe ? "Taichung" : "Kobe"; 
+                                const destCode = isToKobe ? "UKB" : "RMQ"; 
+                                const destCity = isToKobe ? "Kobe" : "Taichung"; 
+
+                                return (
+                                    <div key={event.id} className="relative bg-white rounded-xl shadow-sm overflow-hidden mb-4 border border-gray-200">
+                                        <div className="absolute left-[-8px] top-1/2 -translate-y-1/2 w-4 h-4 rounded-full z-10 box-border border-r border-gray-200" style={{ backgroundColor: COLORS.pageBg }} />
+                                        <div className="absolute right-[-8px] top-1/2 -translate-y-1/2 w-4 h-4 rounded-full z-10 box-border border-l border-gray-200" style={{ backgroundColor: COLORS.pageBg }} />
+                                        <div className="absolute left-4 top-1/2 -translate-y-1/2 w-[calc(100%-2rem)] border-t-2 border-dashed" style={{ borderColor: COLORS.boardingPassLine }} />
+
+                                        <div style={{ backgroundColor: COLORS.headerBg }} className="p-3 text-white flex justify-between items-center">
+                                            <div className="flex items-center gap-2">
+                                                <Plane className="transform -rotate-45" size={18} />
+                                                <span className="font-bold tracking-widest text-sm">BOARDING PASS</span>
+                                            </div>
+                                            <span className="font-mono text-sm opacity-80">{day.fullDate}</span>
+                                        </div>
+
+                                        <div className="p-4 pt-6 bg-white">
+                                            <div className="flex justify-between items-center mb-4">
+                                                <div className="text-center w-16">
+                                                    <div className="text-3xl font-black text-gray-800">{originCode}</div>
+                                                    <div className="text-xs text-gray-500">{originCity}</div>
+                                                </div>
+                                                <div className="flex-1 px-4 text-center">
+                                                    {/* Updated Time Style for Ticket */}
+                                                    <div style={{ color: COLORS.boardingPassTime }} className="relative z-10 inline-block bg-white px-2 text-base font-bold mb-2 -mt-5 font-mono">{event.time}</div>
+                                                    <div style={{ backgroundColor: COLORS.primary }} className="h-0.5 w-full relative">
+                                                        <Plane style={{ color: COLORS.primary }} className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white p-0.5 transform rotate-90" size={14} />
+                                                    </div>
+                                                </div>
+                                                <div className="text-center w-16">
+                                                    <div className="text-3xl font-black text-gray-800">{destCode}</div>
+                                                    <div className="text-xs text-gray-500">{destCity}</div>
+                                                </div>
+                                            </div>
+                                            <div className="flex justify-between items-center text-sm text-gray-600 border-t border-gray-100 pt-2 mt-2">
+                                                <div className="flex items-center gap-1">
+                                                    <span className="font-bold mr-1">Flight:</span>
+                                                    <span>{event.title}</span>
+                                                </div>
+                                                <button onClick={() => openEventModal(currentDayIndex, event, idx)} style={{ color: COLORS.primary }} className="hover:opacity-70"><Edit2 size={16} /></button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            }
+
+                            return (
+                                <div key={event.id} style={{ borderLeftColor: COLORS.headerBg, boxShadow: `0 4px 6px -1px ${COLORS.cardShadow}40` }} className="bg-white rounded-xl overflow-hidden border-l-4 group relative">
+                                    <div className="p-4 pr-12">
+                                        <div className="flex justify-between items-start mb-2"><span style={{ backgroundColor: COLORS.timeBadge }} className="text-white text-xs px-2 py-1 rounded-full font-mono">{event.time}</span></div>
+                                        <h3 className="text-lg font-bold text-[#333] mb-1">{formatTitleWithArrow(event.title)}</h3>
+                                        <div className="flex items-center text-gray-500 text-sm mb-2"><MapPin size={14} className="mr-1" />{event.location}</div>
+                                        {event.note && <p className="text-xs text-gray-400 bg-gray-50 p-2 rounded mb-3">備註: {event.note}</p>}
+                                        {event.address && (
+                                            <div className="flex gap-2 mt-3 pt-3 border-t border-gray-100">
+                                                <button style={{ backgroundColor: COLORS.mapBtn }} className="flex-1 flex items-center justify-center gap-2 text-[#333] py-2 rounded-lg text-sm font-medium active:scale-95 transition-transform" onClick={() => window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(event.address)}`)}><MapPin size={16} />地圖</button>
+                                                <button style={{ backgroundColor: COLORS.navBtn }} className="flex-1 flex items-center justify-center gap-2 text-white py-2 rounded-lg text-sm font-medium active:scale-95 transition-transform" onClick={() => window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(event.address)}`)}><Navigation size={16} />導航</button>
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div className="absolute top-2 right-2 flex flex-col gap-1">
+                                        <button onClick={() => openEventModal(currentDayIndex, event, idx)} style={{ color: COLORS.primary }} className="p-1.5 hover:opacity-70 bg-white/80 rounded-full shadow-sm"><Edit2 size={16} /></button>
+                                        <button onClick={() => setDeleteConfirm({ type: 'event', data: { dayIndex: currentDayIndex, eventIndex: idx, title: event.title } })} className="p-1.5 text-gray-400 hover:text-red-400 bg-white/80 rounded-full shadow-sm"><Trash2 size={16} /></button>
+                                        <div className="flex flex-col mt-2 gap-1">
+                                            <button onClick={() => handleMoveEvent(idx, -1)} disabled={idx === 0} style={{ color: COLORS.headerBg }} className="p-1.5 hover:opacity-70 disabled:opacity-30"><ArrowUp size={16} /></button>
+                                            <button onClick={() => handleMoveEvent(idx, 1)} disabled={idx === day.events.length - 1} style={{ color: COLORS.headerBg }} className="p-1.5 hover:opacity-70 disabled:opacity-30"><ArrowDown size={16} /></button>
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                        <button onClick={() => openEventModal(currentDayIndex)} style={{ borderColor: COLORS.headerBg, color: COLORS.headerBg }} className="w-full py-4 rounded-xl border-2 border-dashed font-bold flex items-center justify-center gap-2 hover:bg-white/50 active:scale-98 transition-all"><Plus size={20} /> 新增行程</button>
+                        <div className="h-10"></div>
+                    </div>
+                </div>
+            );
+        };
+
+        // --- Component: Must Buy View ---
+        const MustBuyView = ({ mustBuyItems, addToCart, openMustBuyModal, setDeleteConfirm }) => {
+            const [city, setCity] = useState('Kobe');
+            const cities = [{ id: 'Kobe', label: '神戶' }, { id: 'Kyoto', label: '京都' }, { id: 'Osaka', label: '大阪' }];
+            const filteredItems = mustBuyItems.filter(item => item.city === city);
+
+            return (
+                <div className="flex flex-col h-full pb-24" style={{ backgroundColor: COLORS.pageBg }}>
+                    <div style={{ backgroundColor: COLORS.headerBg }} className="p-4 text-white shadow-md sticky top-0 z-10">
+                        <div className="flex justify-between items-center mb-4">
+                            <h2 className="text-xl font-bold">必買推薦</h2>
+                            <button onClick={() => openMustBuyModal(city)} style={{ color: COLORS.headerBg }} className="bg-white p-2 rounded-full shadow-md active:scale-95 hover:bg-gray-100"><Plus size={20} /></button>
+                        </div>
+                    </div>
+                    {/* City Switcher */}
+                    <div className="p-4 pb-0">
+                        <div className="flex bg-white/40 p-1 rounded-full">
+                            {cities.map(c => (
+                                <button key={c.id} onClick={() => setCity(c.id)} style={city === c.id ? { backgroundColor: COLORS.headerBg, color: 'white' } : {}} className={`flex-1 py-2 rounded-full text-sm transition-colors font-bold ${city === c.id ? 'shadow-sm' : 'text-gray-500 hover:bg-white/50'}`}>{c.label}</button>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto px-4 py-4">
+                        <div className="grid grid-cols-2 gap-4">
+                            {filteredItems.map((item, idx) => (
+                                <div key={item.id} style={{ boxShadow: `0 4px 6px -1px ${COLORS.cardShadow}` }} className="bg-white rounded-xl p-4 relative group flex flex-col justify-between min-h-[160px]">
+                                    <div>
+                                        <div style={{ backgroundColor: COLORS.mustBuyNameBg }} className="inline-block px-2 py-1 rounded text-white font-bold text-sm mb-2 shadow-sm break-words max-w-full">
+                                            {item.name}
+                                        </div>
+                                        <p style={{ color: COLORS.primary }} className="font-bold text-sm mb-1">{item.price}</p>
+                                        <button onClick={() => window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.address || item.loc)}`)} style={{ '--hover-color': COLORS.primary }} className="text-xs text-gray-600 flex items-start gap-1 hover:text-[var(--hover-color)] text-left group-btn mb-1">
+                                            <MapPin size={12} className="mt-0.5 shrink-0" />
+                                            <div><span className="font-medium underline decoration-dotted underline-offset-2">{item.loc}</span></div>
+                                        </button>
+                                        {item.note && <p className="text-[10px] text-gray-500 bg-gray-50 p-1 rounded inline-block">{item.note}</p>}
+                                    </div>
+                                    
+                                    <div className="flex justify-between items-end mt-2">
+                                         <div className="flex gap-1">
+                                            <button onClick={() => openMustBuyModal(city, item)} style={{ color: COLORS.headerBg }} className="p-1.5 hover:opacity-70 bg-gray-50 rounded-full"><Edit2 size={12} /></button>
+                                            <button onClick={() => setDeleteConfirm({ type: 'mustbuy', data: item })} className="p-1.5 text-gray-400 hover:text-red-400 bg-gray-50 rounded-full"><Trash2 size={12} /></button>
+                                        </div>
+                                        <button onClick={() => addToCart(item, city)} style={{ color: '#333', backgroundColor: COLORS.pageBg }} className="p-2 rounded-full shadow-md hover:opacity-80 active:scale-90 transition-all"><Plus size={16} /></button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // --- Component: Shopping List View ---
+        const ShoppingListView = ({ shoppingList, shoppingAPI, setShowAddItemModal }) => {
+            const [viewCity, setViewCity] = useState('All');
+            const cities = [{ id: 'All', label: '全部' }, { id: 'Kobe', label: '神戶' }, { id: 'Kyoto', label: '京都' }, { id: 'Osaka', label: '大阪' }, { id: 'Other', label: '其他' }];
+            
+            const toggleCheck = (item) => shoppingAPI.updateItem({ ...item, checked: !item.checked });
+            const deleteItem = (id) => shoppingAPI.deleteItem(id);
+            const filteredList = shoppingList.filter(item => viewCity === 'All' || item.city === viewCity || (!item.city && viewCity === 'Other')).sort((a, b) => a.checked - b.checked);
+            const handleImageUpload = async (item, event) => { const file = event.target.files[0]; if (file) { const img = await compressImage(file); shoppingAPI.updateItem({ ...item, image: img }); }};
+            
+            return (
+                <div className="flex flex-col h-full pb-24 relative" style={{ backgroundColor: COLORS.pageBg }}>
+                    <div style={{ backgroundColor: COLORS.headerBg }} className="p-4 text-white sticky top-0 z-10 shadow-md"><div className="flex justify-between items-center mb-4"><h2 className="text-xl font-bold">購物清單</h2><button onClick={() => setShowAddItemModal(true)} style={{ color: COLORS.headerBg }} className="bg-white p-2 rounded-full hover:bg-gray-100"><Plus size={20} /></button></div><div className="flex bg-white/40 p-1 rounded-full overflow-x-auto no-scrollbar">{cities.map(c => (<button key={c.id} onClick={() => setViewCity(c.id)} style={viewCity === c.id ? { backgroundColor: COLORS.headerBg, color: 'white' } : {}} className={`flex-1 py-1 px-3 rounded-full text-xs whitespace-nowrap transition-colors font-bold ${viewCity === c.id ? 'shadow-sm' : 'text-gray-600 hover:bg-white/50'}`}>{c.label}</button>))}</div></div>
+                    <div className="flex-1 overflow-y-auto p-4"><div className="grid grid-cols-2 gap-4">{filteredList.map(item => (<div key={item.id} className={`relative bg-white rounded-xl aspect-square shadow-sm p-2 flex flex-col transition-all ${item.checked ? 'opacity-50 grayscale' : ''}`}><div className="flex-1 w-full h-full overflow-hidden rounded-lg mb-2 relative bg-gray-100 flex items-center justify-center group">{item.image ? (<img src={item.image} alt={item.name} className="w-full h-full object-cover" />) : (<label className="flex flex-col items-center justify-center gap-1 text-xs text-gray-400 w-full h-full cursor-pointer hover:bg-gray-200 transition-colors"><Camera size={24} style={{ color: COLORS.primary }} /><span>拍照</span><input type="file" accept="image/*" className="hidden" onChange={(e) => handleImageUpload(item, e)} /></label>)}{item.image && (<div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"><button onClick={() => shoppingAPI.updateItem({ ...item, image: null })} className="bg-white/20 text-white p-1 rounded-full backdrop-blur-sm"><X size={16} /></button></div>)}</div><div className="px-1 relative"><h3 className="font-bold text-sm text-gray-800 line-clamp-1 pr-6">{item.name}</h3><p className="text-[10px] text-gray-500 line-clamp-1">{item.note || "無備註"}</p></div><button onClick={() => deleteItem(item.id)} className="absolute top-2 left-2 bg-white/80 p-1.5 rounded-full text-gray-400 hover:text-red-500 shadow-sm"><Trash2 size={14} /></button><button onClick={() => toggleCheck(item)} style={item.checked ? { backgroundColor: COLORS.checkChecked, borderColor: COLORS.checkChecked } : { borderColor: COLORS.checkUnchecked }} className={`absolute bottom-2 right-2 w-8 h-8 rounded-full flex items-center justify-center shadow-md border-2 transition-colors ${item.checked ? 'text-white' : 'bg-white text-transparent hover:border-gray-300'}`}><Check size={16} /></button></div>))}</div></div>
+                </div>
+            );
+        };
+
+        const FlogView = ({ flogItems, setFlogItems, setShowAddFlogModal, openFlogModal, setDeleteConfirm, itinerary }) => {
+             const [viewingFlogItem, setViewingFlogItem] = useState(null);
+             const [sortOrder, setSortOrder] = useState('asc'); 
+             const sortedItems = [...flogItems].sort((a, b) => { const dateA = new Date(a.date); const dateB = new Date(b.date); return sortOrder === 'asc' ? dateA - dateB : dateB - dateA; });
+             const toggleSort = () => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc');
+             const leftCol = sortedItems.filter((_, i) => i % 2 === 0);
+             const rightCol = sortedItems.filter((_, i) => i % 2 !== 0);
+
+             return (
+                <div className="flex flex-col h-full pb-24 relative" style={{ backgroundColor: COLORS.pageBg }}>
+                    <div style={{ backgroundColor: COLORS.headerBg }} className="p-4 text-white sticky top-0 z-10 shadow-md flex justify-between items-center"><h2 className="text-xl font-bold">旅遊紀錄 (Flog)</h2><div className="flex gap-2"><button onClick={toggleSort} style={{ color: COLORS.headerBg }} className="bg-white p-2 rounded-full hover:bg-gray-100 flex items-center justify-center"><ArrowUpDown size={20} /></button><button onClick={() => setShowAddFlogModal(true)} style={{ color: COLORS.headerBg }} className="bg-white p-2 rounded-full hover:bg-gray-100"><Plus size={20} /></button></div></div>
+                    <div className="flex-1 overflow-y-auto p-4">
+                        <div className="flex gap-4 items-start">
+                             <div className="flex-1 flex flex-col gap-4">{leftCol.map(item => (<FlogCard key={item.id} item={item} setViewingFlogItem={setViewingFlogItem} openFlogModal={openFlogModal} setDeleteConfirm={setDeleteConfirm} />))}</div>
+                             <div className="flex-1 flex flex-col gap-4">{rightCol.map(item => (<FlogCard key={item.id} item={item} setViewingFlogItem={setViewingFlogItem} openFlogModal={openFlogModal} setDeleteConfirm={setDeleteConfirm} />))}</div>
+                        </div>
+                        {sortedItems.length === 0 && (<div className="flex flex-col items-center justify-center h-64 text-gray-400"><Camera size={48} className="mb-2 opacity-50" /><p>還沒有照片紀錄，按右上角新增！</p></div>)}
+                    </div>
+                    {viewingFlogItem && (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm" onClick={() => setViewingFlogItem(null)}>
+                            <div className="bg-white p-4 pb-6 rounded-lg shadow-2xl max-w-sm w-full relative max-h-[90vh] overflow-y-auto no-scrollbar flex flex-col" onClick={e => e.stopPropagation()}><div className="w-full bg-gray-100 mb-4 rounded-sm relative shadow-inner">{viewingFlogItem.image ? (<img src={viewingFlogItem.image} alt={viewingFlogItem.location} className="w-full h-auto object-contain block" />) : (<div className="w-full h-64 flex items-center justify-center text-gray-300"><Camera size={48} /></div>)}</div><div className="flex flex-col items-start gap-2"><span style={{ backgroundColor: COLORS.timeBadge }} className="inline-block px-3 py-1 rounded-full text-white font-mono text-sm shadow-sm">{viewingFlogItem.location}</span><p className="text-sm text-gray-600 leading-relaxed font-serif text-left mt-2 w-full">{viewingFlogItem.note}</p><p className="text-xs text-gray-400 font-mono tracking-widest w-full text-left mt-1">{formatDateV2(viewingFlogItem.date)}</p></div><button onClick={() => setViewingFlogItem(null)} className="absolute top-2 right-2 bg-black/50 text-white rounded-full p-1 shadow-md hover:bg-black/70"><X size={20} /></button></div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+        
+        const FlogCard = ({ item, setViewingFlogItem, openFlogModal, setDeleteConfirm }) => (
+            <div className="bg-white rounded-xl shadow-sm overflow-hidden group relative cursor-pointer w-full" onClick={() => setViewingFlogItem(item)}>
+                <div className="w-full bg-gray-100 relative">{item.image ? (<img src={item.image} alt={item.location} className="w-full h-auto object-cover block" />) : (<div className="w-full h-32 flex items-center justify-center text-gray-400"><Camera size={32} /></div>)}</div>
+                <div className="p-3"><p className="text-xs text-gray-500 line-clamp-2 mb-2">{item.note}</p><p className="text-[10px] text-gray-400 font-mono text-left mb-1">{formatDateV2(item.date)}</p><h3 style={{ backgroundColor: COLORS.timeBadge }} className="inline-block px-2 py-1 rounded-full text-white font-mono text-[10px]">{item.location}</h3></div>
+                <div className="absolute bottom-3 right-3 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}><button onClick={() => openFlogModal(item)} className="bg-white p-1.5 rounded-full shadow-sm text-gray-600 hover:text-blue-500"><Edit2 size={14} /></button><button onClick={() => setDeleteConfirm({ type: 'flog', data: item })} className="bg-white p-1.5 rounded-full shadow-sm text-gray-600 hover:text-red-500"><Trash2 size={14} /></button></div>
+            </div>
+        );
+
+        const ExpensesView = ({ expenses, itinerary, setShowAddExpenseModal, exchangeRate, setDeleteConfirm }) => {
+            const dailySummaries = itinerary.map(dayData => {
+                const dayTotal = expenses.filter(e => e.day === dayData.day).reduce((sum, item) => sum + item.amount, 0);
+                return { ...dayData, total: dayTotal };
+            });
+            const grandTotal = dailySummaries.reduce((sum, day) => sum + day.total, 0);
+
+            return (
+                <div className="flex flex-col h-full pb-24 relative" style={{ backgroundColor: COLORS.pageBg }}>
+                    <div style={{ backgroundColor: COLORS.headerBg }} className="p-4 text-white sticky top-0 z-10 shadow-md flex justify-between items-center"><div><h2 className="text-xl font-bold">記帳管理</h2><p className="text-xs opacity-90">總支出: ¥{grandTotal.toLocaleString()} <span className="ml-2 font-medium">(約 NT${Math.round(grandTotal * exchangeRate).toLocaleString()})</span></p></div><button onClick={() => setShowAddExpenseModal(true)} style={{ color: COLORS.headerBg }} className="bg-white p-2 rounded-full hover:bg-gray-100"><Plus size={20} /></button></div>
+                    <div className="flex-1 overflow-y-auto p-4 space-y-6">
+                        <div className="bg-white rounded-xl shadow-md overflow-hidden"><div className="p-4 border-b border-gray-100 flex items-center gap-2"><PieChart size={20} style={{ color: COLORS.headerBg }} /><h3 className="font-bold text-gray-700">每日消費總覽</h3></div><div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr style={{ backgroundColor: '#f0f2f5', color: '#666' }}><th className="py-3 px-4 text-left font-semibold">日期</th><th className="py-3 px-4 text-right font-semibold">日幣 (¥)</th><th className="py-3 px-4 text-right font-semibold">台幣 (NT$)</th></tr></thead><tbody>{dailySummaries.map((day, idx) => (<tr key={day.day} className={`border-b last:border-0 ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}><td className="py-3 px-4 text-gray-600 font-medium">Day {day.day}</td><td className="py-3 px-4 text-right font-mono font-medium text-gray-800">{day.total > 0 ? day.total.toLocaleString() : '-'}</td><td className="py-3 px-4 text-right font-mono text-gray-500 text-xs">{day.total > 0 ? Math.round(day.total * exchangeRate).toLocaleString() : '-'}</td></tr>))}<tr style={{ backgroundColor: COLORS.primary }} className="text-white font-bold"><td className="py-3 px-4">總計</td><td className="py-3 px-4 text-right">{grandTotal.toLocaleString()}</td><td className="py-3 px-4 text-right">{Math.round(grandTotal * exchangeRate).toLocaleString()}</td></tr></tbody></table></div></div>
+                        {dailySummaries.map(day => {
+                            const dayExpenses = expenses.filter(e => e.day === day.day);
+                            if (dayExpenses.length === 0) return null;
+                            return (
+                                <div key={day.day} className="bg-white rounded-xl shadow-sm overflow-hidden"><div className="bg-gray-50 px-4 py-2 border-b flex justify-between items-center"><span className="font-bold text-[#333]">Day {day.day} - {day.date}</span><span style={{ backgroundColor: COLORS.timeBadge }} className="text-xs text-white px-2 py-1 rounded-full">¥{day.total.toLocaleString()}</span></div><div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="text-gray-400 text-xs border-b"><th className="py-2 pl-4 text-left w-8">#</th><th className="py-2 text-left min-w-[60px]">品項</th><th className="py-2 text-right">日幣</th><th style={{ color: COLORS.primary }} className="py-2 text-right">台幣</th><th className="py-2 text-right pr-4 w-16">備註</th><th className="w-8"></th></tr></thead><tbody>{dayExpenses.map((item, index) => (<tr key={item.id} className="border-b last:border-0 hover:bg-gray-50"><td className="py-3 pl-4 text-gray-400 font-mono text-xs">{index + 1}</td><td className="py-3 font-medium text-[#333]">{item.item}</td><td className="py-3 text-right font-mono">¥{item.amount.toLocaleString()}</td><td style={{ color: COLORS.primary }} className="py-3 text-right font-mono text-xs">NT${Math.round(item.amount * exchangeRate).toLocaleString()}</td><td className="py-3 text-right pr-4 text-gray-500 text-xs">{item.note}</td><td className="py-3 pr-2 text-center"><button onClick={() => setDeleteConfirm({ type: 'expense', data: item })} className="text-gray-300 hover:text-red-400"><Trash2 size={16} /></button></td></tr>))}</tbody></table></div></div>
+                            );
+                        })}
+                    </div>
+                </div>
+            );
+        };
+
+        const ToolsView = ({ exchangeRate, setShowCalculatorModal }) => {
+            const [billAmount, setBillAmount] = useLocalStorage('billAmount', '');
+            const [peopleCount, setPeopleCount] = useLocalStorage('peopleCount', 4);
+            const [jpyInput, setJpyInput] = useState('');
+            const [twdInput, setTwdInput] = useState('');
+            const handleJpyChange = (e) => { const val = e.target.value; setJpyInput(val); if (val === '') { setTwdInput(''); } else { setTwdInput(Math.round(parseFloat(val) * exchangeRate).toString()); } };
+            const handleTwdChange = (e) => { const val = e.target.value; setTwdInput(val); if (val === '') { setJpyInput(''); } else { setJpyInput(Math.round(parseFloat(val) / exchangeRate).toString()); } };
+
+            return (
+                <div className="flex flex-col h-full pb-24 overflow-y-auto" style={{ backgroundColor: COLORS.pageBg }}>
+                    <div style={{ backgroundColor: COLORS.headerBg }} className="p-4 text-white sticky top-0 z-10 shadow-md"><h2 className="text-xl font-bold">小工具</h2></div>
+                    <div className="p-4 space-y-4">
+                        <div className="bg-white rounded-2xl p-5 shadow-sm"><div className="flex items-center gap-2 text-[#333] mb-3 font-bold"><DollarSign size={20} style={{ color: COLORS.primary }} />匯率計算 (0.215)</div><div className="space-y-3"><div style={{ borderColor: COLORS.primary }} className="flex items-center border rounded-lg px-3 py-2 bg-white focus-within:ring-2 focus-within:ring-opacity-50"><span className="text-gray-500 w-12 font-bold">JPY</span><input type="number" value={jpyInput} onChange={handleJpyChange} placeholder="輸入日幣" className="bg-transparent flex-1 outline-none text-right font-mono text-lg text-gray-800" /></div><div style={{ borderColor: COLORS.primary }} className="flex items-center border rounded-lg px-3 py-2 bg-white focus-within:ring-2 focus-within:ring-opacity-50"><span className="text-gray-500 w-12 font-bold">TWD</span><input type="number" value={twdInput} onChange={handleTwdChange} placeholder="輸入台幣" className="bg-transparent flex-1 outline-none text-right font-mono text-lg text-gray-800" /></div></div></div>
+                        <div className="bg-white rounded-2xl p-5 shadow-sm"><div className="flex items-center gap-2 text-[#333] mb-3 font-bold"><Users size={20} style={{ color: COLORS.primary }} /> AA 分帳</div><div className="flex gap-4"><div className="flex-1"><label className="text-xs text-gray-500 block mb-1">總金額 (¥)</label><input type="number" value={billAmount} onChange={(e) => setBillAmount(e.target.value)} style={{ borderColor: COLORS.primary }} className="w-full border rounded-lg p-2 text-lg font-mono outline-none focus:ring-1" placeholder="0" /></div><div className="w-24"><label className="text-xs text-gray-500 block mb-1">人數</label><div className="flex items-center border rounded-lg overflow-hidden"><button onClick={() => setPeopleCount(Math.max(1, peopleCount-1))} className="px-2 py-2 bg-gray-100 hover:bg-gray-200">-</button><span className="flex-1 text-center font-mono">{peopleCount}</span><button onClick={() => setPeopleCount(peopleCount+1)} className="px-2 py-2 bg-gray-100 hover:bg-gray-200">+</button></div></div></div><div style={{ backgroundColor: COLORS.splitResult }} className="mt-4 rounded-lg p-3 flex justify-between items-center text-white"><span className="text-sm font-medium">每人應付</span><span className="text-xl font-bold">¥ {billAmount ? Math.ceil(billAmount / peopleCount) : 0}<span className="text-sm font-normal opacity-90 ml-2">(約 NT$ {billAmount ? Math.round(Math.ceil(billAmount / peopleCount) * exchangeRate).toLocaleString() : 0})</span></span></div></div>
+                        <div className="grid grid-cols-2 gap-4"><button onClick={() => window.open('https://translate.google.com/m/translate?sl=ja&tl=zh-TW', 'GoogleTranslate', 'width=400,height=600,toolbar=no,menubar=no,scrollbars=yes,resizable=yes,location=no,status=no')} className="bg-white p-4 rounded-xl shadow-sm flex flex-col items-center gap-2 hover:bg-gray-50 active:scale-95 transition-transform"><Globe size={24} style={{ color: COLORS.primary }} /><span className="text-sm font-medium text-[#333]">Google 翻譯</span></button><button onClick={() => setShowCalculatorModal(true)} className="bg-white p-4 rounded-xl shadow-sm flex flex-col items-center gap-2 hover:bg-gray-50 active:scale-95 transition-transform"><Calculator size={24} style={{ color: COLORS.primary }} /><span className="text-sm font-medium">完整計算機</span></button></div>
+                    </div>
+                </div>
+            );
+        };
+
+        const CalculatorModal = ({ onClose }) => {
+            const [display, setDisplay] = useState('0'); const [prev, setPrev] = useState(null); const [op, setOp] = useState(null); const [wait, setWait] = useState(false);
+            const num = (n) => { if(wait) { setDisplay(String(n)); setWait(false); } else setDisplay(display === '0' ? String(n) : display + n); };
+            const opClick = (o) => { const val = parseFloat(display); if(prev === null) setPrev(val); else if(op) { const res = op === '+' ? prev+val : op === '-' ? prev-val : op === '*' ? prev*val : prev/val; setDisplay(String(res)); setPrev(res); } setWait(true); setOp(o); };
+            const eq = () => opClick('='); const clr = () => { setDisplay('0'); setPrev(null); setOp(null); setWait(false); };
+            return (<div className="fixed inset-0 bg-black bg-opacity-50 z-[60] flex items-center justify-center p-4"><div className="bg-white rounded-2xl w-full max-w-xs shadow-2xl overflow-hidden"><div style={{ backgroundColor: COLORS.headerBg }} className="p-3 flex justify-between items-center text-white"><h3 className="font-bold flex items-center gap-2"><Calculator size={18}/> 計算機</h3><button onClick={onClose}><X size={20}/></button></div><div className="p-4 bg-gray-100 text-right text-3xl font-mono border-b h-16 flex items-center justify-end">{display}</div><div className="grid grid-cols-4 gap-1 p-2 bg-gray-200">{[7,8,9,'/',4,5,6,'*',1,2,3,'-',0,'.','=','+'].map(b => (<button key={b} onClick={() => typeof b === 'number' ? num(b) : b === 'C' ? clr() : b === '=' ? eq() : b === '.' ? num('.') : opClick(b)} style={['/','*','-','+','='].includes(b) ? { backgroundColor: COLORS.primary, color: 'white' } : {}} className={`p-4 text-xl font-bold rounded shadow-sm active:scale-95 ${['/','*','-','+','='].includes(b) ? '' : 'bg-white text-gray-700'} ${b === 0 ? 'col-span-2' : ''}`}>{b === '*' ? '×' : b === '/' ? '÷' : b}</button>))} <button onClick={clr} className="col-span-4 bg-red-400 text-white p-3 rounded mt-1 font-bold">清除</button></div></div></div>);
+        };
+
+        const App = () => {
+            const [activeTab, setActiveTab] = useState('itinerary');
+            
+            // Flatten default MustBuy items for DB seeding
+            const defaultMustBuyList = [
+                ...DEFAULT_MUST_BUY_ITEMS.Kobe.map(i => ({ ...i, city: 'Kobe', id: Date.now() + Math.random() })),
+                ...DEFAULT_MUST_BUY_ITEMS.Kyoto.map(i => ({ ...i, city: 'Kyoto', id: Date.now() + Math.random() })),
+                ...DEFAULT_MUST_BUY_ITEMS.Osaka.map(i => ({ ...i, city: 'Osaka', id: Date.now() + Math.random() }))
+            ];
+
+            const itineraryAPI = useDB(DB_CONFIG.STORES[0], DEFAULT_ITINERARY);
+            const shoppingAPI = useDB(DB_CONFIG.STORES[1], []);
+            const expensesAPI = useDB(DB_CONFIG.STORES[2], []);
+            const mustBuyAPI = useDB(DB_CONFIG.STORES[3], defaultMustBuyList);
+            const flogAPI = useDB(DB_CONFIG.STORES[4], []);
+
+            const [exchangeRate, setExchangeRate] = useLocalStorage('exchangeRate', 0.215); // Persistent Exchange Rate
+
+            // Modal States
+            const [showAddItemModal, setShowAddItemModal] = useState(false);
+            const [showCalculatorModal, setShowCalculatorModal] = useState(false);
+            const [showAddExpenseModal, setShowAddExpenseModal] = useState(false);
+            const [showAddMustBuyModal, setShowAddMustBuyModal] = useState(false);
+            const [showAddFlogModal, setShowAddFlogModal] = useState(false);
+            const [showEventModal, setShowEventModal] = useState(false);
+            const [deleteConfirm, setDeleteConfirm] = useState(null);
+
+            // Input States
+            const [newItemName, setNewItemName] = useState("");
+            const [newItemNote, setNewItemNote] = useState("");
+            const [newItemImage, setNewItemImage] = useState(null); 
+            const [newItemCity, setNewItemCity] = useState("Other"); 
+
+            const [newExpenseDay, setNewExpenseDay] = useState(1);
+            const [newExpenseItem, setNewExpenseItem] = useState("");
+            const [newExpenseAmount, setNewExpenseAmount] = useState("");
+            const [newExpenseNote, setNewExpenseNote] = useState("");
+
+            const [newMustBuyCity, setNewMustBuyCity] = useState("Kobe");
+            const [newMustBuyName, setNewMustBuyName] = useState("");
+            const [newMustBuyPrice, setNewMustBuyPrice] = useState("");
+            const [newMustBuyLoc, setNewMustBuyLoc] = useState("");
+            const [newMustBuyNote, setNewMustBuyNote] = useState("");
+            const [editingMustBuyIndex, setEditingMustBuyIndex] = useState(null); // Actually item object
+
+            const [flogDate, setFlogDate] = useState("2026/1/22"); 
+            const [flogLocation, setFlogLocation] = useState("");
+            const [flogImage, setFlogImage] = useState(null);
+            const [flogNote, setFlogNote] = useState("");
+            const [editingFlogId, setEditingFlogId] = useState(null);
+
+            const [editingEventIndex, setEditingEventIndex] = useState(null); // Actually item object for itinerary event editing inside a day
+            const [eventForm, setEventForm] = useState({ startTime: "", endTime: "", title: "", location: "", address: "", note: "" });
+            const [currentDayIndex, setCurrentDayIndex] = useState(0); 
+
+            // Handlers using APIs
+            const addToCart = (item, city) => {
+                shoppingAPI.addItem({ id: Date.now(), name: item.name, count: 1, note: item.loc, checked: false, image: null, city: city });
+                alert(`已將「${item.name}」加入購物清單！`);
+            };
+
+            const handleAddItem = () => {
+                if (newItemName.trim()) {
+                    shoppingAPI.addItem({ 
+                        id: Date.now(), 
+                        name: newItemName, 
+                        count: 1, 
+                        note: newItemNote, 
+                        checked: false, 
+                        image: newItemImage, 
+                        city: newItemCity 
+                    });
+                    setNewItemName(""); 
+                    setNewItemNote(""); 
+                    setNewItemImage(null); 
+                    setNewItemCity("Other");
+                    setShowAddItemModal(false);
+                }
+            };
+            
+            const handleModalImageUpload = async (event) => {
+                 const file = event.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onloadend = () => {
+                        setNewItemImage(reader.result);
+                    };
+                    reader.readAsDataURL(file);
+                }
+            };
+            
+             const handleFlogImageUpload = async (event) => {
+                 const file = event.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onloadend = () => {
+                        setFlogImage(reader.result);
+                    };
+                    reader.readAsDataURL(file);
+                }
+            };
+
+            const handleAddExpense = () => {
+                if (newExpenseItem.trim() && newExpenseAmount) {
+                    expensesAPI.addItem({ id: Date.now(), day: Number(newExpenseDay), item: newExpenseItem, amount: Number(newExpenseAmount), note: newExpenseNote });
+                    setNewExpenseItem(""); setNewExpenseAmount(""); setNewExpenseNote(""); setShowAddExpenseModal(false);
+                }
+            };
+
+            const handleSaveMustBuy = () => {
+                if (newMustBuyName.trim()) {
+                    const newItem = { 
+                        id: editingMustBuyIndex ? editingMustBuyIndex.id : Date.now(), 
+                        name: newMustBuyName, 
+                        price: newMustBuyPrice || "依現場", 
+                        loc: newMustBuyLoc || "自訂地點", 
+                        address: "", 
+                        note: newMustBuyNote, 
+                        city: newMustBuyCity
+                    };
+                    
+                    if (editingMustBuyIndex) {
+                        mustBuyAPI.updateItem(newItem);
+                    } else {
+                        mustBuyAPI.addItem(newItem);
+                    }
+                    
+                    setNewMustBuyName(""); setNewMustBuyPrice(""); setNewMustBuyLoc(""); setNewMustBuyNote(""); setEditingMustBuyIndex(null); setShowAddMustBuyModal(false);
+                }
+            };
+            
+            const handleSaveFlog = async () => {
+                if (!flogImage) {
+                    alert("請上傳照片！");
+                    return;
+                }
+                const newFlog = {
+                    id: editingFlogId || Date.now(),
+                    date: flogDate,
+                    location: flogLocation,
+                    image: flogImage,
+                    note: flogNote
+                };
+                
+                if (editingFlogId) {
+                    flogAPI.updateItem(newFlog);
+                } else {
+                    flogAPI.addItem(newFlog);
+                }
+
+                setFlogDate(DEFAULT_ITINERARY[0].fullDate);
+                setFlogLocation("");
+                setFlogImage(null);
+                setFlogNote("");
+                setEditingFlogId(null);
+                setShowAddFlogModal(false);
+            };
+            
+            const openFlogModal = (item = null) => {
+                if (item) {
+                    setFlogDate(item.date);
+                    setFlogLocation(item.location);
+                    setFlogImage(item.image);
+                    setFlogNote(item.note);
+                    setEditingFlogId(item.id);
+                } else {
+                    setFlogDate(DEFAULT_ITINERARY[0].fullDate);
+                    setFlogLocation("");
+                    setFlogImage(null);
+                    setFlogNote("");
+                    setEditingFlogId(null);
+                }
+                setShowAddFlogModal(true);
+            }
+
+            const openMustBuyModal = (city, item = null) => {
+                setNewMustBuyCity(city);
+                if (item) { setNewMustBuyName(item.name); setNewMustBuyPrice(item.price); setNewMustBuyLoc(item.loc); setNewMustBuyNote(item.note); setEditingMustBuyIndex(item); } 
+                else { setNewMustBuyName(""); setNewMustBuyPrice(""); setNewMustBuyLoc(""); setNewMustBuyNote(""); setEditingMustBuyIndex(null); }
+                setShowAddMustBuyModal(true);
+            };
+
+            const handleSaveEvent = () => {
+                if (!eventForm.title.trim()) { alert("請輸入行程標題！"); return; }
+                const currentDay = itineraryAPI.data[currentDayIndex];
+                // Deep copy
+                const dayEvents = [...currentDay.events];
+                
+                let timeString = eventForm.startTime;
+                if (eventForm.endTime) { timeString += `-${eventForm.endTime}`; }
+                const eventData = { ...eventForm, time: timeString };
+                delete eventData.startTime; delete eventData.endTime;
+
+                if (editingEventIndex !== null) { 
+                    const originalEvent = dayEvents[editingEventIndex];
+                    dayEvents[editingEventIndex] = { ...originalEvent, ...eventData };
+                } else { 
+                    dayEvents.push({ id: Date.now(), ...eventData }); 
+                }
+                
+                dayEvents.sort((a, b) => a.time.localeCompare(b.time));
+
+                const updatedDay = { ...currentDay, events: dayEvents };
+                itineraryAPI.updateItem(updatedDay);
+                setShowEventModal(false);
+            };
+
+            const openEventModal = (dayIndex, event = null, index = null) => {
+                setCurrentDayIndex(dayIndex); 
+                if (event) {
+                    const [start, end] = event.time.split('-');
+                    setEventForm({ startTime: start || "", endTime: end || "", title: event.title, location: event.location, address: event.address, note: event.note });
+                    setEditingEventIndex(index);
+                } else {
+                    setEventForm({ startTime: "", endTime: "", title: "", location: "", address: "", note: "" });
+                    setEditingEventIndex(null);
+                }
+                setShowEventModal(true);
+            };
+
+            const confirmDelete = async () => {
+                if (!deleteConfirm) return;
+                const { type, data } = deleteConfirm;
+                if (type === 'expense') { expensesAPI.deleteItem(data.id); }
+                else if (type === 'mustbuy') { mustBuyAPI.deleteItem(data.id); }
+                else if (type === 'flog') { flogAPI.deleteItem(data.id); }
+                else if (type === 'event') {
+                    const currentDay = itineraryAPI.data[data.dayIndex];
+                    const newEvents = currentDay.events.filter((_, idx) => idx !== data.eventIndex);
+                    itineraryAPI.updateItem({ ...currentDay, events: newEvents });
+                }
+                setDeleteConfirm(null);
+            };
+
+            // Loading state
+            if (itineraryAPI.loading || shoppingAPI.loading || expensesAPI.loading || mustBuyAPI.loading || flogAPI.loading) {
+                return <div className="flex h-screen items-center justify-center text-gray-500 font-bold">載入中... (Initializing DB V8)</div>;
+            }
+
+            return (
+                <ErrorBoundary>
+                    <div className="w-full h-screen max-w-md mx-auto bg-white flex flex-col overflow-hidden relative font-sans text-[#333]">
+                        <div className="flex-1 overflow-hidden">
+                            {activeTab === 'itinerary' && <ItineraryView itinerary={itineraryAPI.data} setItinerary={itineraryAPI.updateItem} openEventModal={openEventModal} setDeleteConfirm={setDeleteConfirm} itineraryAPI={itineraryAPI} />}
+                            {activeTab === 'mustbuy' && <MustBuyView mustBuyItems={mustBuyAPI.data} addToCart={addToCart} openMustBuyModal={openMustBuyModal} setDeleteConfirm={setDeleteConfirm} />}
+                            {activeTab === 'shopping' && <ShoppingListView shoppingList={shoppingAPI.data} shoppingAPI={shoppingAPI} setShowAddItemModal={setShowAddItemModal} />}
+                            {activeTab === 'flog' && <FlogView flogItems={flogAPI.data} setFlogItems={flogAPI.replaceAll} setShowAddFlogModal={openFlogModal} openFlogModal={openFlogModal} setDeleteConfirm={setDeleteConfirm} itinerary={itineraryAPI.data} />}
+                            {activeTab === 'expenses' && <ExpensesView expenses={expensesAPI.data} itinerary={itineraryAPI.data} setShowAddExpenseModal={setShowAddExpenseModal} exchangeRate={exchangeRate} setDeleteConfirm={setDeleteConfirm} />}
+                            {activeTab === 'tools' && <ToolsView exchangeRate={exchangeRate} setShowCalculatorModal={setShowCalculatorModal} />}
+                        </div>
+
+                        {showCalculatorModal && <CalculatorModal onClose={() => setShowCalculatorModal(false)} />}
+                        
+                        {/* Itinerary Edit Modal */}
+                        {showEventModal && (
+                            <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                                <div className="bg-white rounded-2xl w-full max-w-sm p-5 shadow-lg">
+                                    <h3 className="font-bold text-lg mb-4 text-[#333]">{editingEventIndex !== null ? '編輯' : '新增'}行程 (Day {itineraryAPI.data[currentDayIndex]?.day})</h3>
+                                    <div className="space-y-3">
+                                        <div className="flex items-center gap-2">
+                                            <div style={{ borderColor: COLORS.primary }} className="flex-1 flex items-center border rounded-lg px-3 py-2 bg-white focus-within:ring-1 focus-within:ring-[#a6c2ce]">
+                                                <Clock size={18} className="text-gray-400 mr-2" />
+                                                <select className="flex-1 outline-none text-sm bg-transparent" value={eventForm.startTime} onChange={e => setEventForm({...eventForm, startTime: e.target.value})}>
+                                                    <option value="">開始</option>
+                                                    {TIME_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
+                                                </select>
+                                            </div>
+                                            <span className="text-gray-400">-</span>
+                                            <div style={{ borderColor: COLORS.primary }} className="flex-1 flex items-center border rounded-lg px-3 py-2 bg-white focus-within:ring-1 focus-within:ring-[#a6c2ce]">
+                                                <select className="flex-1 outline-none text-sm bg-transparent" value={eventForm.endTime} onChange={e => setEventForm({...eventForm, endTime: e.target.value})}>
+                                                    <option value="">結束</option>
+                                                    {TIME_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div style={{ borderColor: COLORS.primary }} className="flex items-center border rounded-lg px-3 py-2 bg-white focus-within:ring-1 focus-within:ring-[#a6c2ce]"><Type size={18} className="text-gray-400 mr-2" /><input type="text" placeholder="行程標題" className="flex-1 outline-none" value={eventForm.title} onChange={e => setEventForm({...eventForm, title: e.target.value})} /></div>
+                                        <div style={{ borderColor: COLORS.primary }} className="flex items-center border rounded-lg px-3 py-2 bg-white focus-within:ring-1 focus-within:ring-[#a6c2ce]"><MapPin size={18} className="text-gray-400 mr-2" /><input type="text" placeholder="地點名稱" className="flex-1 outline-none" value={eventForm.location} onChange={e => setEventForm({...eventForm, location: e.target.value})} /></div>
+                                        <div style={{ borderColor: COLORS.primary }} className="flex items-center border rounded-lg px-3 py-2 bg-white focus-within:ring-1 focus-within:ring-[#a6c2ce]"><Navigation size={18} className="text-gray-400 mr-2" /><input type="text" placeholder="導航地址" className="flex-1 outline-none" value={eventForm.address} onChange={e => setEventForm({...eventForm, address: e.target.value})} /></div>
+                                        <div style={{ borderColor: COLORS.primary }} className="flex items-center border rounded-lg px-3 py-2 bg-white focus-within:ring-1 focus-within:ring-[#a6c2ce]"><FileText size={18} className="text-gray-400 mr-2" /><input type="text" placeholder="備註" className="flex-1 outline-none" value={eventForm.note} onChange={e => setEventForm({...eventForm, note: e.target.value})} /></div>
+                                    </div>
+                                    <div className="flex gap-2 mt-4"><button onClick={() => setShowEventModal(false)} className="flex-1 py-3 rounded-lg bg-gray-100 text-gray-600 font-medium">取消</button><button onClick={handleSaveEvent} style={{ backgroundColor: COLORS.primary }} className="flex-1 py-3 rounded-lg text-white font-bold">儲存</button></div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Add Expense Modal */}
+                        {showAddExpenseModal && (
+                            <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center z-20 p-4">
+                                <div className="bg-white rounded-2xl w-full max-w-sm p-5 shadow-lg">
+                                    <h3 className="font-bold text-lg mb-4 text-[#333]">新增記帳</h3>
+                                    <div className="mb-3"><label className="block text-xs text-gray-500 mb-1">日期</label><select value={newExpenseDay} onChange={(e) => setNewExpenseDay(e.target.value)} style={{ borderColor: COLORS.primary }} className="w-full border rounded-lg p-3 outline-none bg-white">{itineraryAPI.data.map(d => (<option key={d.day} value={d.day}>Day {d.day} ({d.date})</option>))}</select></div>
+                                    <input type="text" placeholder="品項 (如: 拉麵)" style={{ borderColor: COLORS.primary }} className="w-full border rounded-lg p-3 mb-3 outline-none focus:ring-1" value={newExpenseItem} onChange={(e) => setNewExpenseItem(e.target.value)} />
+                                    <input type="number" placeholder="金額 (¥)" style={{ borderColor: COLORS.primary }} className="w-full border rounded-lg p-3 mb-3 outline-none focus:ring-1" value={newExpenseAmount} onChange={(e) => setNewExpenseAmount(e.target.value)} />
+                                    <input type="text" placeholder="備註 (選填)" style={{ borderColor: COLORS.primary }} className="w-full border rounded-lg p-3 mb-4 outline-none focus:ring-1" value={newExpenseNote} onChange={(e) => setNewExpenseNote(e.target.value)} />
+                                    <div className="flex gap-2"><button onClick={() => setShowAddExpenseModal(false)} className="flex-1 py-3 rounded-lg bg-gray-100 text-gray-600 font-medium">取消</button><button onClick={handleAddExpense} style={{ backgroundColor: COLORS.primary }} className="flex-1 py-3 rounded-lg text-white font-bold">新增</button></div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Add Shopping Item Modal */}
+                        {showAddItemModal && (
+                            <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center z-20 p-4">
+                                <div className="bg-white rounded-2xl w-full max-w-sm p-5 shadow-lg">
+                                    <h3 className="font-bold text-lg mb-4 text-[#333]">新增購物項目</h3>
+                                    <div className="mb-4"><label className="block w-full h-32 border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:bg-gray-50 transition-colors">{newItemImage ? (<img src={newItemImage} alt="Preview" className="h-full object-contain" />) : (<div className="flex flex-col items-center text-gray-400"><Camera size={24} style={{ color: COLORS.primary }} /><span className="text-xs mt-1">點擊拍照或上傳</span></div>)}<input type="file" accept="image/*" className="hidden" onChange={handleModalImageUpload} /></label></div>
+                                    <div className="mb-4">
+                                        <label className="block text-xs text-gray-500 mb-1">區域</label>
+                                        <select value={newItemCity} onChange={(e) => setNewItemCity(e.target.value)} style={{ borderColor: COLORS.primary }} className="w-full border rounded-lg p-3 outline-none bg-white">
+                                            <option value="Kobe">神戶</option>
+                                            <option value="Kyoto">京都</option>
+                                            <option value="Osaka">大阪</option>
+                                            <option value="Other">其他</option>
+                                        </select>
+                                    </div>
+                                    <input type="text" placeholder="商品名稱" style={{ borderColor: COLORS.primary }} className="w-full border rounded-lg p-3 mb-3 outline-none focus:ring-1" value={newItemName} onChange={(e) => setNewItemName(e.target.value)} />
+                                    <input type="text" placeholder="備註" style={{ borderColor: COLORS.primary }} className="w-full border rounded-lg p-3 mb-4 outline-none focus:ring-1" value={newItemNote} onChange={(e) => setNewItemNote(e.target.value)} />
+                                    <div className="flex gap-2"><button onClick={() => setShowAddItemModal(false)} className="flex-1 py-3 rounded-lg bg-gray-100 text-gray-600 font-medium">取消</button><button onClick={handleAddItem} style={{ backgroundColor: COLORS.primary }} className="flex-1 py-3 rounded-lg text-white font-bold">加入</button></div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Must Buy Modal */}
+                        {showAddMustBuyModal && (
+                            <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                                <div className="bg-white rounded-2xl w-full max-w-sm p-5 shadow-lg">
+                                    <h3 className="font-bold text-lg mb-4 text-[#333]">{editingMustBuyIndex !== null ? '編輯' : '新增'}必買項目</h3>
+                                    <input type="text" placeholder="商品名稱" style={{ borderColor: COLORS.primary }} className="w-full border rounded-lg p-3 mb-3 outline-none focus:ring-1" value={newMustBuyName} onChange={(e) => setNewMustBuyName(e.target.value)} />
+                                    <input type="text" placeholder="預估價格" style={{ borderColor: COLORS.primary }} className="w-full border rounded-lg p-3 mb-3 outline-none focus:ring-1" value={newMustBuyPrice} onChange={(e) => setNewMustBuyPrice(e.target.value)} />
+                                    <input type="text" placeholder="購買地點" style={{ borderColor: COLORS.primary }} className="w-full border rounded-lg p-3 mb-3 outline-none focus:ring-1" value={newMustBuyLoc} onChange={(e) => setNewMustBuyLoc(e.target.value)} />
+                                    <input type="text" placeholder="備註" style={{ borderColor: COLORS.primary }} className="w-full border rounded-lg p-3 mb-4 outline-none focus:ring-1" value={newMustBuyNote} onChange={(e) => setNewMustBuyNote(e.target.value)} />
+                                    <div className="flex gap-2"><button onClick={() => setShowAddMustBuyModal(false)} className="flex-1 py-3 rounded-lg bg-gray-100 text-gray-600 font-medium">取消</button><button onClick={handleSaveMustBuy} style={{ backgroundColor: COLORS.primary }} className="flex-1 py-3 rounded-lg text-white font-bold">儲存</button></div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Add Flog Modal */}
+                        {showAddFlogModal && (
+                            <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                                <div className="bg-white rounded-2xl w-full max-w-sm p-5 shadow-lg max-h-[80vh] overflow-y-auto">
+                                    <h3 className="font-bold text-lg mb-4 text-[#333]">{editingFlogId ? '編輯' : '新增'} Flog 紀錄</h3>
+                                    <div className="mb-4"><label className="block w-full h-48 border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:bg-gray-50 transition-colors relative overflow-hidden">{flogImage ? (<img src={flogImage} alt="Preview" className="w-full h-full object-cover" />) : (<div className="flex flex-col items-center text-gray-400"><Camera size={32} /><span className="text-sm mt-2">點擊上傳照片</span></div>)}<input type="file" accept="image/*" className="hidden" onChange={handleFlogImageUpload} /></label></div>
+                                    <div className="mb-3">
+                                        <label className="block text-xs text-gray-500 mb-1">日期</label>
+                                        <select value={flogDate} onChange={(e) => setFlogDate(e.target.value)} style={{ borderColor: COLORS.primary }} className="w-full border rounded-lg p-3 outline-none bg-white">{itineraryAPI.data.map(d => (<option key={d.day} value={d.fullDate}>{d.fullDate} (Day {d.day})</option>))}</select>
+                                    </div>
+                                    <input type="text" placeholder="景點名稱" style={{ borderColor: COLORS.primary }} className="w-full border rounded-lg p-3 mb-3 outline-none focus:ring-1" value={flogLocation} onChange={(e) => setFlogLocation(e.target.value)} />
+                                    <input type="text" placeholder="心情札記..." style={{ borderColor: COLORS.primary }} className="w-full border rounded-lg p-3 mb-4 outline-none focus:ring-1" value={flogNote} onChange={(e) => setFlogNote(e.target.value)} />
+                                    <div className="flex gap-2"><button onClick={() => setShowAddFlogModal(false)} className="flex-1 py-3 rounded-lg bg-gray-100 text-gray-600 font-medium">取消</button><button onClick={handleSaveFlog} style={{ backgroundColor: COLORS.primary }} className="flex-1 py-3 rounded-lg text-white font-bold">儲存</button></div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Generic Delete Modal */}
+                        {deleteConfirm && (
+                            <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                                <div className="bg-white rounded-2xl w-full max-w-sm p-5 shadow-lg">
+                                    <h3 className="font-bold text-lg mb-2 text-[#333]">確認刪除</h3>
+                                    <p className="text-gray-600 mb-4">
+                                        {deleteConfirm.type === 'expense' && `確定要刪除「${deleteConfirm.data.item}」這筆記帳嗎？`}
+                                        {deleteConfirm.type === 'mustbuy' && `確定要刪除「${deleteConfirm.data.name}」嗎？`}
+                                        {deleteConfirm.type === 'event' && `確定要刪除行程「${deleteConfirm.data.title}」嗎？`}
+                                        {deleteConfirm.type === 'flog' && `確定要刪除這張 Flog 照片嗎？`}
+                                    </p>
+                                    <div className="flex gap-2"><button onClick={() => setDeleteConfirm(null)} className="flex-1 py-3 rounded-lg bg-gray-100 text-gray-600 font-medium">取消</button><button onClick={confirmDelete} className="flex-1 py-3 rounded-lg bg-red-400 text-white font-bold">刪除</button></div>
+                                </div>
+                            </div>
+                        )}
+
+                        <div className="fixed bottom-5 left-4 right-4 bg-white rounded-full shadow-2xl h-16 flex justify-around items-center z-50">
+                            <button onClick={() => setActiveTab('itinerary')} style={activeTab === 'itinerary' ? { backgroundColor: COLORS.headerBg, color: 'white' } : { color: 'gray' }} className={`p-2 rounded-full flex flex-col items-center gap-1 w-14 transition-all ${activeTab === 'itinerary' ? 'scale-110 shadow-md' : ''}`}><MapPin size={22} /><span className="text-[10px] font-medium">行程</span></button>
+                            <button onClick={() => setActiveTab('mustbuy')} style={activeTab === 'mustbuy' ? { backgroundColor: COLORS.headerBg, color: 'white' } : { color: 'gray' }} className={`p-2 rounded-full flex flex-col items-center gap-1 w-14 transition-all ${activeTab === 'mustbuy' ? 'scale-110 shadow-md' : ''}`}><ShoppingBag size={22} /><span className="text-[10px] font-medium">必買</span></button>
+                            <button onClick={() => setActiveTab('shopping')} style={activeTab === 'shopping' ? { backgroundColor: COLORS.headerBg, color: 'white' } : { color: 'gray' }} className={`p-2 rounded-full flex flex-col items-center gap-1 w-14 transition-all ${activeTab === 'shopping' ? 'scale-110 shadow-md' : ''}`}><ShoppingCart size={22} /><span className="text-[10px] font-medium">購物</span></button>
+                            <button onClick={() => setActiveTab('expenses')} style={activeTab === 'expenses' ? { backgroundColor: COLORS.headerBg, color: 'white' } : { color: 'gray' }} className={`p-2 rounded-full flex flex-col items-center gap-1 w-14 transition-all ${activeTab === 'expenses' ? 'scale-110 shadow-md' : ''}`}><Wallet size={22} /><span className="text-[10px] font-medium">記帳</span></button>
+                            <button onClick={() => setActiveTab('flog')} style={activeTab === 'flog' ? { backgroundColor: COLORS.headerBg, color: 'white' } : { color: 'gray' }} className={`p-2 rounded-full flex flex-col items-center gap-1 w-14 transition-all ${activeTab === 'flog' ? 'scale-110 shadow-md' : ''}`}><Camera size={22} /><span className="text-[10px] font-medium">Flog</span></button>
+                            <button onClick={() => setActiveTab('tools')} style={activeTab === 'tools' ? { backgroundColor: COLORS.headerBg, color: 'white' } : { color: 'gray' }} className={`p-2 rounded-full flex flex-col items-center gap-1 w-14 transition-all ${activeTab === 'tools' ? 'scale-110 shadow-md' : ''}`}><Settings size={22} /><span className="text-[10px] font-medium">工具</span></button>
+                        </div>
+                    </div>
+                </ErrorBoundary>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
